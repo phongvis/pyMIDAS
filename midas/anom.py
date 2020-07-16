@@ -13,15 +13,24 @@ __all__ = [
 
 def counts_to_anom(tot, cur, cur_t):
     cur_mean = tot / cur_t
+    
+    # Why taking the max here? Only consider error if `cur` is greater than `cur_mean`?
     sqerr = np.power(max(0, cur - cur_mean), 2)
+    
+    # Why not using the same formula in the paper, the same but shorter?
+    # sqerr / cur_mean * (t/(t-1))
     return sqerr / cur_mean + sqerr / (cur_mean * max(1, cur_t - 1))
 
 def getRowInfo(row, anom_score,cur_count,total_count,cur_t):
     cur_src = int(row["src"]) 
     cur_dst = int(row["dst"])
+    # count is added row by row
+    # so, multiple (src,dst) pairs at the same time tick have different scores because they are processed in order
+    # should they have the same score given that the records are identical?
     cur_count.insert(cur_src, cur_dst, 1)
     total_count.insert(cur_src, cur_dst, 1)
     cur_mean = total_count.get_count(cur_src, cur_dst) / cur_t
+    # OK, it doesn't take the max between 0 and signed error
     sqerr = np.power(cur_count.get_count(cur_src, cur_dst) - cur_mean, 2)
     cur_score = 0 if cur_t == 1 else sqerr / cur_mean + sqerr / (cur_mean * (cur_t - 1))
     cur_score = 0 if math.isnan(cur_score) else cur_score
@@ -51,10 +60,10 @@ def midasR(src, dst, times, num_rows, num_buckets, factor):
     dst_score = Nodehash(num_rows, num_buckets)
     src_total = Nodehash(num_rows, num_buckets)
     dst_total = Nodehash(num_rows, num_buckets)
-    anom_score = np.zeros(num_entries)
+#     anom_score = np.zeros(num_entries)
+    anom_score = []
     cur_t = 1
-
-    for i in range(num_entries):
+    for i in tqdm(range(num_entries)):
         if i == 0 or times[i] > cur_t:
             cur_count.lower(factor)
             src_score.lower(factor)
@@ -82,6 +91,8 @@ def midasR(src, dst, times, num_rows, num_buckets, factor):
             dst_total.get_count(cur_dst), dst_score.get_count(cur_dst), cur_t
         )
         combined_score = max(cur_score_src, cur_score_dst, cur_score)
-        anom_score[i] = np.log(1 + combined_score)
+#         anom_score[i] = np.log(1 + combined_score)
+        # It would be useful to seperate between those 3 scores
+        anom_score.append((np.log(1 + cur_score_src), np.log(1 + cur_score_dst), np.log(1 + cur_score)))
 
     return anom_score
